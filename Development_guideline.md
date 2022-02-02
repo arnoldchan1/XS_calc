@@ -12,6 +12,7 @@ See both CRYSOL and FoXS papers.
 
 - Compile atom-specific data: vdW radii and form factors
 - Write these functions
+  - Function to parse molecular input (we'll use MDAnalysis)
   - SASA calculation (hard)
   - Form factor correction (easy)
   - X-ray scattering signal calculation (that calls SASA calculation and FF correction) (easy)
