@@ -9,15 +9,16 @@ class Molecule:
     def __init__(self, sel):
         FF_ref = load_form_factors()
         vdW_ref = load_vdW_radii()
-        self.vdW = # Get this from vdW_ref
-        self.FF = # Get this from FF_ref. Actual form factors 
+        self.elements = None 
+        self.vdW = None # Get this from vdW_ref
+        self.FF = None # Get this from FF_ref. Actual form factors 
 
 class Frame: 
 # Variable part of the trajectory, for example atoms' coordinates and therefore SASA
 
     def __init__(self, xyz):
-        self.xyz = sel.positions
-        self.SASA = np.zeros( ... )
+        self.xyz = xyz
+        self.SASA = None #np.zeros( ... )
         self.isSASAcalculated = False # Until we have the SASA calculated
 
     def SASA_calc(self, env, force_recalc=False):
@@ -35,7 +36,7 @@ class Trajectory:
         sel = U.select_atoms(selection)
         self.Molecule = Molecule(sel)
         self.Frames = []
-        for ts.frame in U.trajectory:
+        for ts in U.trajectory:
             self.Frames.append(Frame(sel.positions))
         
 
@@ -45,7 +46,7 @@ class Environment: # Sample environment related items
                        c2=2.0, 
                        r_sol=1.8, 
                        r_m=1.62, 
-                       rho=0.334)
+                       rho=0.334):
         self.c1 = c1
         self.c2 = c2
         self.r_sol = r_sol
@@ -81,7 +82,7 @@ def FF_calc(frame, env, mea):
 def frame_XS_calc(frame, env, mea, ignoreSASA=False): # Calculate the X-ray scattering of a frame
     if not ignoreSASA:
         # Get the SASA calculated if not done
-        frame.SASA_calc()
+        frame.SASA_calc(env)
 
     # Calculate adjusted form factors as a table.
     FF_q = FF_calc(frame, env, mea)
