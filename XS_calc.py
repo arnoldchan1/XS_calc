@@ -231,8 +231,26 @@ class Experiment: # Experimental data
 
 
 def load_form_factors(flavor='WaasKirf'):
-    # Return a dictionary containing the 11 coefficients from the WaasKirf table for each atom type 
-    pass
+    # Return a dictionary containing the 11 coefficients from the WaasKirf table for each atom type
+    # a1 a2 a3 a4 a5 c b1 b2 b3 b4 b5
+    # 9 coefficients for CromerMann table
+    # a1 a2 a3 a4 c b1 b2 b3 b4
+    if flavor == 'WaasKirf':
+        fname = r'form_factors/f0_WaasKirf.dat'
+    elif flavor == 'CromerMann':
+        fname = r'form_factors/f0_CromerMann'
+        
+    with open(fname) as f:
+        content = f.readlines()
+    
+    f0s = {}
+    for i, x in enumerate(content[:]):
+        if x[0:2] == '#S':
+            atom = x.split()[-1]
+            coef = np.fromstring(content[i+3], sep='\t')
+            f0s[atom] = coef
+    
+    return f0s
 
 def load_vdW_radii(use_CRYSOL=True):
     # vdW table in pm from mendeleev package (from W. M. Haynes, Handbook of Chemistry and Physics 95th Edition, CRC Press, New York, 2014, ISBN-10: 1482208679, ISBN-13: 978-1482208672.)
