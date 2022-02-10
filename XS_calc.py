@@ -304,7 +304,6 @@ def FF_calc(frame, env, mea):
     fv_func = lambda sval, a: np.sum(a[None, :5] * np.exp(-a[None, 6:] * sval[:, None] ** 2), axis=1) + a[5]
 
     # anonymous function to calculate C1, excluded volume adjustent coefficient
-<<<<<<< HEAD
     #C1_func = lambda c1, q, rm: (c1 ** 3) * np.exp(-((4.0*math.pi/3.0)**(1.5)*(q**2)*(rm**2)*(c1**2-1.0)) / (4.0*math.pi))
     C1_func = lambda c1, q, rm: (c1 ** 3) * np.exp((-(4*np.pi/3)**(1.5)*(q**2)*(rm**2)*(c1**2-1))/(4*np.pi))
 
@@ -312,7 +311,7 @@ def FF_calc(frame, env, mea):
     # Fraser, R. D. B., T. P. MacRae and E. Suzuki. 1978. J. Appl. Cryst. 11:693-694
 #     fs_func = lambda q, r0: math.pi**(1.5)*r0**3*env.rho*np.exp(-math.pi*(math.pi**(1.5)*r0**3)**(2/3)*q**2) 
 #                               v_i               rho                      
-    fs_func = lambda q, r0: (4.0/3.0*math.pi*(r0**3)) * env.rho * np.exp(-math.pi * ((4.0/3.0*math.pi*(r0**3))**(2.0/3.0)) * (q**2))  # Fraser's version
+    fs_func = lambda q, r0: (4.0/3.0*np.pi*(r0**3)) * env.rho * np.exp(-np.pi * ((4.0/3.0*np.pi*(r0**3))**(2.0/3.0)) * (q**2))  # Fraser's version
 #     fs_func = lambda q, r0: (4.0/3.0*math.pi*(r0**3)) * env.rho * np.exp(-math.pi * ((4.0/3.0*math.pi*(r0**3))**(2.0/3.0)) * (q**2) / (4 * math.pi)) # FoXS's version
 #     fs_func = lambda q, r0: (4.0/3.0*math.pi*(r0**3)) * env.rho * np.exp(-math.pi * (r0**2) * (q**2) )  # Darren's version
 
@@ -336,10 +335,10 @@ def frame_XS_calc(frame, env, mea, ignoreSASA=False): # Calculate the X-ray scat
     # an i by j matrix of distances between all atoms
     d_ij = np.sqrt(np.sum((frame.xyz[None,:,:]-frame.xyz[:,None,:])**2, axis=2))
 
-    # Calculate scattering signal XS
+    # Calculate scattering signal XS - currently this is quite slow. There has to be a way to make it faster
     XS = np.zeros(np.shape(mea.q))
     for i in np.arange(frame.mol.n_atoms):
-        for j in np.arange(frame.mol.n_atoms-1)+1:
+        for j in np.arange(i+1, frame.mol.n_atoms):
             qd = mea.q * d_ij[i,j]
             XS += 2 * FF_q[i] * FF_q[j] * np.sinc(qd / np.pi)
         XS += FF_q[i] ** 2
@@ -365,7 +364,7 @@ if __name__ == "__main__":
     U = mda.Universe('data/myprotein.pdb')
     traj = Trajectory(U, selection='protein and not symbol H')
     env = Environment()
-    mea = Measurement(q = np.linspace(0.03, 0.8, num=200))
+    mea = Measurement(q = np.linspace(0.00, 0.5, num=101))
     XS = traj_calc(traj, env, mea)
 
     # Do something with XS. E.g. fitting etc.
