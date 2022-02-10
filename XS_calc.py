@@ -2,7 +2,6 @@
 
 import MDAnalysis as mda
 import numpy as np
-import math
 # from numba import njit, prange
 
 # @njit(parallel=True)
@@ -299,13 +298,15 @@ def FF_calc(frame, env, mea):
     # Calculate f(q, c1, c2) based on the q in measurement (mea), c1 and c2 in environment (env), and SASA in the frame
 
     # get s from q
-    s = mea.q / (4 * math.pi)
+    s = mea.q / (4 * np.pi)
 
     # anonymous function to calculate in vacuo form factors
     fv_func = lambda sval, a: np.sum(a[None, :5] * np.exp(-a[None, 6:] * sval[:, None] ** 2), axis=1) + a[5]
 
     # anonymous function to calculate C1, excluded volume adjustent coefficient
-    C1_func = lambda c1, q, rm: (c1 ** 3) * np.exp(-((4.0*math.pi/3.0)**(1.5)*(q**2)*(rm**2)*(c1**2-1.0)) / (4.0*math.pi))
+<<<<<<< HEAD
+    #C1_func = lambda c1, q, rm: (c1 ** 3) * np.exp(-((4.0*math.pi/3.0)**(1.5)*(q**2)*(rm**2)*(c1**2-1.0)) / (4.0*math.pi))
+    C1_func = lambda c1, q, rm: (c1 ** 3) * np.exp((-(4*np.pi/3)**(1.5)*(q**2)*(rm**2)*(c1**2-1))/(4*np.pi))
 
     # anonymous function to calculate excluded volue form factors
     # Fraser, R. D. B., T. P. MacRae and E. Suzuki. 1978. J. Appl. Cryst. 11:693-694
@@ -320,11 +321,10 @@ def FF_calc(frame, env, mea):
     
     FF_q = [] # n_atoms by len(q) matrix
     for i in np.arange(len(frame.mol.elements)):
-#         print(frame.mol.elements[i], frame.mol.vdW[i])
-        FF_q.append(fv_func(s, frame.mol.FF[i,:]) - C1_func(env.c1, s, env.r_m) * fs_func(s, frame.mol.vdW[i]) + env.c2 * frame.SASA[i] * fw)
+        FF_q.append(fv_func(s, frame.mol.FF[i,:]) - C1_func(env.c1,s,env.r_m)*fs_func(s,frame.mol.vdW[i]) + env.c2*frame.SASA[i]*fw)
         
-    return FF_q, fw
-    
+    return FF_q
+
 def frame_XS_calc(frame, env, mea, ignoreSASA=False): # Calculate the X-ray scattering of a frame
     if not ignoreSASA:
         # Get the SASA calculated if not done
@@ -332,9 +332,17 @@ def frame_XS_calc(frame, env, mea, ignoreSASA=False): # Calculate the X-ray scat
 
     # Calculate adjusted form factors as a table.
     FF_q = FF_calc(frame, env, mea)
+    
+    # an i by j matrix of distances between all atoms
+    d_ij = np.sqrt(np.sum((frame.xyz[None,:,:]-frame.xyz[:,None,:])**2, axis=2))
 
     # Calculate scattering signal XS
-    ...
+    XS = np.zeros(np.shape(mea.q))
+    for i in np.arange(frame.mol.n_atoms):
+        for j in np.arange(frame.mol.n_atoms-1)+1:
+            qd = mea.q * d_ij[i,j]
+            XS += 2 * FF_q[i] * FF_q[j] * np.sinc(qd / np.pi)
+        XS += FF_q[i] ** 2
 
     return XS
 
