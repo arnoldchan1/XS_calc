@@ -31,9 +31,9 @@ def raster_unit_sphere(num=200):
 class Molecule: 
 # Invariant part of the trajectory, for example atoms' vdW radii
 
-    def __init__(self, sel):
+    def __init__(self, sel, use_CRYSOL=True, match_FoXS=False):
         FF_ref = load_form_factors()
-        vdW_ref = load_vdW_radii()
+        vdW_ref = load_vdW_radii(use_CRYSOL=use_CRYSOL, match_FoXS=match_FoXS)
         self.elements = sel.atoms.elements # Is a numpy array of ['C', 'N' ...]
         self.vdW = np.array([vdW_ref[x]/100 for x in self.elements]) # Get this from vdW_ref, in Angstroms
         self.FF = np.array([FF_ref[x] for x in self.elements]) # Get this from FF_ref. Actual form factors 
@@ -50,7 +50,7 @@ class Frame:
         print(f'The protein has {len(xyz)} atoms')
         self.isSASAcalculated = False # Until we have the SASA calculated
         self.mol = mol
-        
+        self.SASA_A2 = 0  # SASA in angstrom squared
         
     def spatial_decomposition(self):
         self.min_xyz = np.min(self.xyz, axis=0) - self.mol.cutoff
@@ -144,8 +144,8 @@ class Frame:
 #             print(i, self.neighbor_list[i])
         
     def SASA_calc(self, env, force_recalc=False):
-           
         if not self.isSASAcalculated or force_recalc:
+            self.SASA_A2 = 0
             r = raster_unit_sphere(env.num_raster)
             if self.mol.n_atoms < 2500:
                 self.neighbor_calc()
@@ -156,9 +156,11 @@ class Frame:
             for i in range(self.mol.n_atoms):
                 solvent_probe = self.xyz[i] + (self.mol.vdW[i]+env.r_sol) * r
 #                 print(i, np.sum(np.min(((solvent_probe[:,:,None] - self.xyz[self.neighbor_list[i]][:,:,None].T)**2).sum(1) - (self.mol.vdW[self.neighbor_list[i]]+env.r_sol)**2, axis=1)>0) / env.num_raster)
-                self.SASA[i] = np.sum(np.min(((solvent_probe[:,:,None] - self.xyz[self.neighbor_list[i]][:,:,None].T)**2).sum(1) - (self.mol.vdW[self.neighbor_list[i]]+env.r_sol)**2, axis=1)>0) / env.num_raster
+                SASA_this = np.sum(np.min(((solvent_probe[:,:,None] - self.xyz[self.neighbor_list[i]][:,:,None].T)**2).sum(1) - (self.mol.vdW[self.neighbor_list[i]]+env.r_sol)**2, axis=1)>0) / env.num_raster
+                self.SASA[i] = SASA_this
+                self.SASA_A2 += SASA_this * (self.mol.vdW[i]+env.r_sol)**2 * 4 * np.pi
             self.isSASAcalculated = True # This avoids recalculation of SASA, which is time consuming
-
+            
         else:
             return # Do nothing and return
 
@@ -188,10 +190,10 @@ class Frame:
         
         
 class Trajectory:
-    def __init__(self, U, selection=None):
+    def __init__(self, U, selection=None, use_CRYSOL=True, match_FoXS=False):
         # Take in the "Universe" object (just the molecule) and create these things 
         sel = U.select_atoms(selection)
-        self.Molecule = Molecule(sel)
+        self.Molecule = Molecule(sel, use_CRYSOL=use_CRYSOL, match_FoXS=match_FoXS)
         self.Frames = []
         for ts in U.trajectory:
             self.Frames.append(Frame(sel.positions, self.Molecule))
@@ -253,7 +255,7 @@ def load_form_factors(flavor='WaasKirf'):
     
     return f0s
 
-def load_vdW_radii(use_CRYSOL=True):
+def load_vdW_radii(use_CRYSOL=True, match_FoXS=False):
     # vdW table in pm from mendeleev package (from W. M. Haynes, Handbook of Chemistry and Physics 95th Edition, CRC Press, New York, 2014, ISBN-10: 1482208679, ISBN-13: 978-1482208672.)
     # Crysol values are from CRYSOL paper and overrides the values in this table
     vdW_table = {'H':  110.0, 'He': 140.0, 'Li': 182.0, 'Be': 153.0,  'B': 192.0,
@@ -285,6 +287,11 @@ def load_vdW_radii(use_CRYSOL=True):
         vdW_table['O'] = 130.0
         vdW_table['S'] = 168.0
         vdW_table['Fe'] = 124.0
+    if match_FoXS:
+        vdW_table['H'] = 107.13 # 107.0
+        vdW_table['C'] = 157.72 # 158.0
+        vdW_table['N'] = 84.14  # 84.0
+        vdW_table['O'] = 129.66 # 130.0
     # Return a dictionary containing the vdW radius for each atom type 
     return vdW_table
 
@@ -298,20 +305,25 @@ def FF_calc(frame, env, mea):
     fv_func = lambda sval, a: np.sum(a[None, :5] * np.exp(-a[None, 6:] * sval[:, None] ** 2), axis=1) + a[5]
 
     # anonymous function to calculate C1, excluded volume adjustent coefficient
-    C1_func = lambda c1, q, rm: (c1 ** 3) * np.exp((-(4*math.pi/3)**(1.5)*(q**2)*(rm**2)*(c1**2-1))/(4*math.pi))
+    C1_func = lambda c1, q, rm: (c1 ** 3) * np.exp(-((4.0*math.pi/3.0)**(1.5)*(q**2)*(rm**2)*(c1**2-1.0)) / (4.0*math.pi))
 
     # anonymous function to calculate excluded volue form factors
     # Fraser, R. D. B., T. P. MacRae and E. Suzuki. 1978. J. Appl. Cryst. 11:693-694
-    fs_func = lambda q, r0: math.pi**(1.5)*r0**3*env.rho*np.exp(-math.pi*(math.pi**(1.5)*r0**3)**(2/3)*q**2) 
+#     fs_func = lambda q, r0: math.pi**(1.5)*r0**3*env.rho*np.exp(-math.pi*(math.pi**(1.5)*r0**3)**(2/3)*q**2) 
+#                               v_i               rho                      
+    fs_func = lambda q, r0: (4.0/3.0*math.pi*(r0**3)) * env.rho * np.exp(-math.pi * ((4.0/3.0*math.pi*(r0**3))**(2.0/3.0)) * (q**2))  # Fraser's version
+#     fs_func = lambda q, r0: (4.0/3.0*math.pi*(r0**3)) * env.rho * np.exp(-math.pi * ((4.0/3.0*math.pi*(r0**3))**(2.0/3.0)) * (q**2) / (4 * math.pi)) # FoXS's version
+#     fs_func = lambda q, r0: (4.0/3.0*math.pi*(r0**3)) * env.rho * np.exp(-math.pi * (r0**2) * (q**2) )  # Darren's version
 
     # form factor of water with radius 1.67 A
-    fw = fv_func(s,np.array([2.960427, 2.508818, 0.637853, 0.722838, 1.142756, 0.027014, 14.182259, 5.936858, 0.112726,34.958481, 0.390240])) + 2*fv_func(s,np.array([0.413048, 0.294953, 0.187491, 0.080701, 0.023736, 0.000049, 15.569946, 32.398468, 5.711404, 61.889874, 1.334118])) - C1_func(env.c1, mea.q, env.r_m)*fs_func(mea.q,1.67)
+    fw = fv_func(s,np.array([2.960427, 2.508818, 0.637853, 0.722838, 1.142756, 0.027014, 14.182259, 5.936858, 0.112726, 34.958481, 0.390240])) + 2 * fv_func(s,np.array([0.413048, 0.294953, 0.187491, 0.080701, 0.023736, 0.000049, 15.569946, 32.398468, 5.711404, 61.889874, 1.334118])) - C1_func(env.c1, s, env.r_m) * fs_func(s, 1.67) #1.6673)
     
     FF_q = [] # n_atoms by len(q) matrix
     for i in np.arange(len(frame.mol.elements)):
-        FF_q.append(fv_func(s, frame.mol.FF[i,:]) - C1_func(env.c1,mea.q,env.r_m)*fs_func(mea.q,frame.mol.vdW[i]) + env.c2*frame.SASA[i]*fw)
+#         print(frame.mol.elements[i], frame.mol.vdW[i])
+        FF_q.append(fv_func(s, frame.mol.FF[i,:]) - C1_func(env.c1, s, env.r_m) * fs_func(s, frame.mol.vdW[i]) + env.c2 * frame.SASA[i] * fw)
         
-    return FF_q
+    return FF_q, fw
     
 def frame_XS_calc(frame, env, mea, ignoreSASA=False): # Calculate the X-ray scattering of a frame
     if not ignoreSASA:
