@@ -2,18 +2,15 @@
 
 import MDAnalysis as mda
 import numpy as np
-# from numba import njit, prange
-
-# @njit(parallel=True)
-# def WPFunction_parallel(Wpos, Ppos):
-#     WPLen = len(Wpos)
-#     PPLen = len(Ppos)
-#     distMat = np.zeros((WPLen, PPLen))
-#     for i in prange(WPLen):
-#         distMat[i] = ((Wpos - Ppos)**2).sum(1)
-#     return distMat
+import time
 
 
+def time_ms(t1, t0, message=None): # Timing utility
+    if message is not None and len(message) > 0:
+        print(f'{message}: {(t1-t0)*1000:.2f} ms')
+    else:
+        print(f'{(t1-t0)*1000:.2f} ms')
+        
 def raster_unit_sphere(num=200):
     L = np.sqrt(num * np.pi);
     pt = []
@@ -350,6 +347,74 @@ def frame_XS_calc(frame, env, mea, ignoreSASA=False): # Calculate the X-ray scat
             XS += 2 * FF_q[i] * FF_q[j] * np.sinc(qd / np.pi)
         XS += FF_q[i] ** 2
 
+    return XS
+
+def frame_XS_calc_fast(frame, env, mea, ignoreSASA=False, timing=False): # Calculate the X-ray scattering of a frame
+    t0 = time.time()
+    if not ignoreSASA:
+        # Get the SASA calculated if not done
+        frame.SASA_calc(env)
+    t1 = time.time()
+    # Calculate adjusted form factors as a table.
+    FF_q = FF_calc(frame, env, mea)
+    t2 = time.time()
+    # an i by j matrix of distances between all atoms
+    d_ij = np.sqrt(np.sum((frame.xyz[None,:,:]-frame.xyz[:,None,:])**2, axis=2))
+    d_ij += np.eye(len(d_ij)) * 1e-15
+    t3 = time.time()
+
+    # Calculate scattering signal XS - currently this is quite slow. There has to be a way to make it faster
+    XS = np.zeros(np.shape(mea.q))
+#     print((FF_q[:,None,:] * FF_q[:,:,None]).shape)
+
+# This huge one-liner is slow
+#     XS = np.sum((FF_q[:,None,:] * FF_q[:,:,None]) * np.sinc(mea.q[:, None, None] * d_ij[None,:,:] / np.pi), axis=(-1, -2))
+
+# This q by q version is pretty good
+    for idx, q in enumerate(mea.q):
+        if q == 0.0:
+            XS[idx] = np.sum((FF_q[:,idx][None,:] * FF_q[:, idx][:,None]))
+#         XS[idx] = np.sum((FF_q[:,idx][None,:] * FF_q[:, idx][:,None]) * np.sinc(d_ij * q / np.pi))
+        else:
+            XS[idx] = np.sum((FF_q[:,idx][None,:] * FF_q[:, idx][:,None]) * np.sin(d_ij * q) / (d_ij * q))
+    t4 = time.time()
+    
+# This element by element version is really slow
+#     for i in np.arange(frame.mol.n_atoms):
+#         for j in np.arange(i+1, frame.mol.n_atoms):
+#             qd = mea.q * d_ij[i,j]
+#             XS += 2 * FF_q[i] * FF_q[j] * np.sinc(qd / np.pi)
+#         XS += FF_q[i] ** 2
+
+    if timing:
+        time_ms(t1, t0, 'SASA')
+        time_ms(t2, t1, '  FF')
+        time_ms(t3, t2, 'dist')
+        time_ms(t4, t3, 'Xray')
+    return XS
+
+def frame_XS_calc_exp(frame, env, mea, ignoreSASA=False, timing=False):
+    q_sphere = raster_unit_sphere(200)
+
+    t0 = time.time()
+    if not ignoreSASA:
+        # Get the SASA calculated if not done
+        frame.SASA_calc(env)
+    t1 = time.time()
+    # Calculate adjusted form factors as a table.
+    FF_q = FF_calc(frame, env, mea)
+    t2 = time.time()
+    # Calculate scattering signal XS - currently this is quite slow. There has to be a way to make it faster
+    XS = np.zeros(np.shape(mea.q))
+
+    for idx, q in enumerate(mea.q):
+        A = np.sum(FF_q[:,idx] * np.exp(-(1j) * q * np.dot(q_sphere, frame.xyz.T)), axis=1)
+        XS[idx] = np.mean(np.abs(A)**2)
+    t3 = time.time()
+    if timing:
+        time_ms(t1, t0, 'SASA')
+        time_ms(t2, t1, '  FF')
+        time_ms(t3, t2, 'Xray')
     return XS
 
 def traj_calc(traj, env, mea, ignoreSASA=False): # Calculate the X-ray scattering of an entire trajectory
