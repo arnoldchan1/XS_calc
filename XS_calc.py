@@ -25,8 +25,9 @@ def raster_unit_sphere(num=200):
         yu = np.sin(p) * np.sin(t)
         zu = np.cos(p)
         pt.append([xu, yu, zu])
-    return np.array(pt)
 
+    return np.array(pt)
+    
 class Molecule: 
 # Invariant part of the trajectory, for example atoms' vdW radii
 
@@ -153,9 +154,12 @@ class Frame:
                 self.neighbor_calc_sd()
             # Computes SASA for each atom and store in the mol.SASA (this will be a fraction from 0 to 1)
             for i in range(self.mol.n_atoms):
-                solvent_probe = self.xyz[i] + (self.mol.vdW[i]+env.r_sol) * r
-#                 print(i, np.sum(np.min(((solvent_probe[:,:,None] - self.xyz[self.neighbor_list[i]][:,:,None].T)**2).sum(1) - (self.mol.vdW[self.neighbor_list[i]]+env.r_sol)**2, axis=1)>0) / env.num_raster)
-                SASA_this = np.sum(np.min(((solvent_probe[:,:,None] - self.xyz[self.neighbor_list[i]][:,:,None].T)**2).sum(1) - (self.mol.vdW[self.neighbor_list[i]]+env.r_sol)**2, axis=1)>0) / env.num_raster
+                if len(self.neighbor_list[i]) == 0:
+                    SASA_this = 1.0
+                else:
+                    solvent_probe = self.xyz[i] + (self.mol.vdW[i]+env.r_sol) * r
+    #                 print(i, np.sum(np.min(((solvent_probe[:,:,None] - self.xyz[self.neighbor_list[i]][:,:,None].T)**2).sum(1) - (self.mol.vdW[self.neighbor_list[i]]+env.r_sol)**2, axis=1)>0) / env.num_raster)
+                    SASA_this = np.sum(np.min(((solvent_probe[:,:,None] - self.xyz[self.neighbor_list[i]][:,:,None].T)**2).sum(1) - (self.mol.vdW[self.neighbor_list[i]]+env.r_sol)**2, axis=1)>0) / env.num_raster
                 self.SASA[i] = SASA_this
                 self.SASA_A2 += SASA_this * (self.mol.vdW[i]+env.r_sol)**2 * 4 * np.pi
             self.isSASAcalculated = True # This avoids recalculation of SASA, which is time consuming
@@ -174,8 +178,11 @@ class Frame:
                 self.neighbor_calc_sd()
             # Computes SASA for each atom and store in the mol.SASA (this will be a fraction from 0 to 1)
             for i in range(self.mol.n_atoms):
-                solvent_probe = self.xyz[i] + (self.mol.vdW[i]+env.r_sol) * r
-                good_solvent_probe = np.where(np.min(((solvent_probe[:,:,None] - self.xyz[self.neighbor_list[i]][:,:,None].T)**2).sum(1) - (self.mol.vdW[self.neighbor_list[i]]+env.r_sol)**2, axis=1)>0)[0]
+                if len(self.neighbor_list[i]) == 0:
+                    good_solvent_probe = list(range(len(solvent_probe)))
+                else:
+                    solvent_probe = self.xyz[i] + (self.mol.vdW[i]+env.r_sol) * r
+                    good_solvent_probe = np.where(np.min(((solvent_probe[:,:,None] - self.xyz[self.neighbor_list[i]][:,:,None].T)**2).sum(1) - (self.mol.vdW[self.neighbor_list[i]]+env.r_sol)**2, axis=1)>0)[0]
                 for j in good_solvent_probe:
                     SASA_xyz.append(solvent_probe[j])
 #                 print(i, len(good_solvent_probe) / env.num_raster, good_solvent_probe)
@@ -322,7 +329,7 @@ def FF_calc(frame, env, mea):
     for i in np.arange(len(frame.mol.elements)):
         FF_q.append(fv_func(s, frame.mol.FF[i,:]) - C1_func(env.c1,s,env.r_m)*fs_func(s,frame.mol.vdW[i]) + env.c2*frame.SASA[i]*fw)
         
-    return FF_q
+    return np.array(FF_q)
 
 def frame_XS_calc(frame, env, mea, ignoreSASA=False): # Calculate the X-ray scattering of a frame
     if not ignoreSASA:
@@ -360,13 +367,7 @@ def traj_calc(traj, env, mea, ignoreSASA=False): # Calculate the X-ray scatterin
 
 
 if __name__ == "__main__":
-    # This would be a typical use case
-    U = mda.Universe('data/myprotein.pdb')
-    traj = Trajectory(U, selection='protein and not symbol H')
-    env = Environment()
-    mea = Measurement(q = np.linspace(0.00, 0.5, num=101))
-    XS = traj_calc(traj, env, mea)
-
-    # Do something with XS. E.g. fitting etc.
+    U = mda.Universe('data/Ala10.pdb')
+    
 
 
