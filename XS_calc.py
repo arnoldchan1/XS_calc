@@ -2,18 +2,15 @@
 
 import MDAnalysis as mda
 import numpy as np
-# from numba import njit, prange
-
-# @njit(parallel=True)
-# def WPFunction_parallel(Wpos, Ppos):
-#     WPLen = len(Wpos)
-#     PPLen = len(Ppos)
-#     distMat = np.zeros((WPLen, PPLen))
-#     for i in prange(WPLen):
-#         distMat[i] = ((Wpos - Ppos)**2).sum(1)
-#     return distMat
+import time
 
 
+def time_ms(t1, t0, message=None): # Timing utility
+    if message is not None and len(message) > 0:
+        print(f'{message}: {(t1-t0)*1000:.2f} ms')
+    else:
+        print(f'{(t1-t0)*1000:.2f} ms')
+        
 def raster_unit_sphere(num=200):
     L = np.sqrt(num * np.pi);
     pt = []
@@ -25,8 +22,9 @@ def raster_unit_sphere(num=200):
         yu = np.sin(p) * np.sin(t)
         zu = np.cos(p)
         pt.append([xu, yu, zu])
-    return np.array(pt)
 
+    return np.array(pt)
+    
 class Molecule: 
 # Invariant part of the trajectory, for example atoms' vdW radii
 
@@ -153,9 +151,12 @@ class Frame:
                 self.neighbor_calc_sd()
             # Computes SASA for each atom and store in the mol.SASA (this will be a fraction from 0 to 1)
             for i in range(self.mol.n_atoms):
-                solvent_probe = self.xyz[i] + (self.mol.vdW[i]+env.r_sol) * r
-#                 print(i, np.sum(np.min(((solvent_probe[:,:,None] - self.xyz[self.neighbor_list[i]][:,:,None].T)**2).sum(1) - (self.mol.vdW[self.neighbor_list[i]]+env.r_sol)**2, axis=1)>0) / env.num_raster)
-                SASA_this = np.sum(np.min(((solvent_probe[:,:,None] - self.xyz[self.neighbor_list[i]][:,:,None].T)**2).sum(1) - (self.mol.vdW[self.neighbor_list[i]]+env.r_sol)**2, axis=1)>0) / env.num_raster
+                if len(self.neighbor_list[i]) == 0:
+                    SASA_this = 1.0
+                else:
+                    solvent_probe = self.xyz[i] + (self.mol.vdW[i]+env.r_sol) * r
+    #                 print(i, np.sum(np.min(((solvent_probe[:,:,None] - self.xyz[self.neighbor_list[i]][:,:,None].T)**2).sum(1) - (self.mol.vdW[self.neighbor_list[i]]+env.r_sol)**2, axis=1)>0) / env.num_raster)
+                    SASA_this = np.sum(np.min(((solvent_probe[:,:,None] - self.xyz[self.neighbor_list[i]][:,:,None].T)**2).sum(1) - (self.mol.vdW[self.neighbor_list[i]]+env.r_sol)**2, axis=1)>0) / env.num_raster
                 self.SASA[i] = SASA_this
                 self.SASA_A2 += SASA_this * (self.mol.vdW[i]+env.r_sol)**2 * 4 * np.pi
             self.isSASAcalculated = True # This avoids recalculation of SASA, which is time consuming
@@ -174,8 +175,11 @@ class Frame:
                 self.neighbor_calc_sd()
             # Computes SASA for each atom and store in the mol.SASA (this will be a fraction from 0 to 1)
             for i in range(self.mol.n_atoms):
-                solvent_probe = self.xyz[i] + (self.mol.vdW[i]+env.r_sol) * r
-                good_solvent_probe = np.where(np.min(((solvent_probe[:,:,None] - self.xyz[self.neighbor_list[i]][:,:,None].T)**2).sum(1) - (self.mol.vdW[self.neighbor_list[i]]+env.r_sol)**2, axis=1)>0)[0]
+                if len(self.neighbor_list[i]) == 0:
+                    good_solvent_probe = list(range(len(solvent_probe)))
+                else:
+                    solvent_probe = self.xyz[i] + (self.mol.vdW[i]+env.r_sol) * r
+                    good_solvent_probe = np.where(np.min(((solvent_probe[:,:,None] - self.xyz[self.neighbor_list[i]][:,:,None].T)**2).sum(1) - (self.mol.vdW[self.neighbor_list[i]]+env.r_sol)**2, axis=1)>0)[0]
                 for j in good_solvent_probe:
                     SASA_xyz.append(solvent_probe[j])
 #                 print(i, len(good_solvent_probe) / env.num_raster, good_solvent_probe)
@@ -322,7 +326,7 @@ def FF_calc(frame, env, mea):
     for i in np.arange(len(frame.mol.elements)):
         FF_q.append(fv_func(s, frame.mol.FF[i,:]) - C1_func(env.c1,s,env.r_m)*fs_func(s,frame.mol.vdW[i]) + env.c2*frame.SASA[i]*fw)
         
-    return FF_q
+    return np.array(FF_q)
 
 def frame_XS_calc(frame, env, mea, ignoreSASA=False): # Calculate the X-ray scattering of a frame
     if not ignoreSASA:
@@ -345,6 +349,74 @@ def frame_XS_calc(frame, env, mea, ignoreSASA=False): # Calculate the X-ray scat
 
     return XS
 
+def frame_XS_calc_fast(frame, env, mea, ignoreSASA=False, timing=False): # Calculate the X-ray scattering of a frame
+    t0 = time.time()
+    if not ignoreSASA:
+        # Get the SASA calculated if not done
+        frame.SASA_calc(env)
+    t1 = time.time()
+    # Calculate adjusted form factors as a table.
+    FF_q = FF_calc(frame, env, mea)
+    t2 = time.time()
+    # an i by j matrix of distances between all atoms
+    d_ij = np.sqrt(np.sum((frame.xyz[None,:,:]-frame.xyz[:,None,:])**2, axis=2))
+    d_ij += np.eye(len(d_ij)) * 1e-15
+    t3 = time.time()
+
+    # Calculate scattering signal XS - currently this is quite slow. There has to be a way to make it faster
+    XS = np.zeros(np.shape(mea.q))
+#     print((FF_q[:,None,:] * FF_q[:,:,None]).shape)
+
+# This huge one-liner is slow
+#     XS = np.sum((FF_q[:,None,:] * FF_q[:,:,None]) * np.sinc(mea.q[:, None, None] * d_ij[None,:,:] / np.pi), axis=(-1, -2))
+
+# This q by q version is pretty good
+    for idx, q in enumerate(mea.q):
+        if q == 0.0:
+            XS[idx] = np.sum((FF_q[:,idx][None,:] * FF_q[:, idx][:,None]))
+#         XS[idx] = np.sum((FF_q[:,idx][None,:] * FF_q[:, idx][:,None]) * np.sinc(d_ij * q / np.pi))
+        else:
+            XS[idx] = np.sum((FF_q[:,idx][None,:] * FF_q[:, idx][:,None]) * np.sin(d_ij * q) / (d_ij * q))
+    t4 = time.time()
+    
+# This element by element version is really slow
+#     for i in np.arange(frame.mol.n_atoms):
+#         for j in np.arange(i+1, frame.mol.n_atoms):
+#             qd = mea.q * d_ij[i,j]
+#             XS += 2 * FF_q[i] * FF_q[j] * np.sinc(qd / np.pi)
+#         XS += FF_q[i] ** 2
+
+    if timing:
+        time_ms(t1, t0, 'SASA')
+        time_ms(t2, t1, '  FF')
+        time_ms(t3, t2, 'dist')
+        time_ms(t4, t3, 'Xray')
+    return XS
+
+def frame_XS_calc_exp(frame, env, mea, ignoreSASA=False, timing=False):
+    q_sphere = raster_unit_sphere(200)
+
+    t0 = time.time()
+    if not ignoreSASA:
+        # Get the SASA calculated if not done
+        frame.SASA_calc(env)
+    t1 = time.time()
+    # Calculate adjusted form factors as a table.
+    FF_q = FF_calc(frame, env, mea)
+    t2 = time.time()
+    # Calculate scattering signal XS - currently this is quite slow. There has to be a way to make it faster
+    XS = np.zeros(np.shape(mea.q))
+
+    for idx, q in enumerate(mea.q):
+        A = np.sum(FF_q[:,idx] * np.exp(-(1j) * q * np.dot(q_sphere, frame.xyz.T)), axis=1)
+        XS[idx] = np.mean(np.abs(A)**2)
+    t3 = time.time()
+    if timing:
+        time_ms(t1, t0, 'SASA')
+        time_ms(t2, t1, '  FF')
+        time_ms(t3, t2, 'Xray')
+    return XS
+
 def traj_calc(traj, env, mea, ignoreSASA=False): # Calculate the X-ray scattering of an entire trajectory
     
     XS = []
@@ -360,13 +432,7 @@ def traj_calc(traj, env, mea, ignoreSASA=False): # Calculate the X-ray scatterin
 
 
 if __name__ == "__main__":
-    # This would be a typical use case
-    U = mda.Universe('data/myprotein.pdb')
-    traj = Trajectory(U, selection='protein and not symbol H')
-    env = Environment()
-    mea = Measurement(q = np.linspace(0.00, 0.5, num=101))
-    XS = traj_calc(traj, env, mea)
-
-    # Do something with XS. E.g. fitting etc.
+    U = mda.Universe('data/Ala10.pdb')
+    
 
 
