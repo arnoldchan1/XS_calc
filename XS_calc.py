@@ -2,6 +2,10 @@
 
 import MDAnalysis as mda
 import numpy as np
+import time
+import multiprocessing
+import dill
+from pathos.multiprocessing import ProcessPool
 # from numba import njit, prange
 
 # @njit(parallel=True)
@@ -33,7 +37,8 @@ class Molecule:
     def __init__(self, sel, use_CRYSOL=True, match_FoXS=False):
         FF_ref = load_form_factors()
         vdW_ref = load_vdW_radii(use_CRYSOL=use_CRYSOL, match_FoXS=match_FoXS)
-        self.elements = sel.atoms.elements # Is a numpy array of ['C', 'N' ...]
+        # self.elements = sel.atoms.elements # Is a numpy array of ['C', 'N' ...]
+        self.elements = [a.type[0] for a in sel.atoms]
         self.vdW = np.array([vdW_ref[x]/100 for x in self.elements]) # Get this from vdW_ref, in Angstroms
         self.FF = np.array([FF_ref[x] for x in self.elements]) # Get this from FF_ref. Actual form factors 
         self.r_sol = 1.8
@@ -83,7 +88,6 @@ class Frame:
                 for k in range(self.boz):
                     self.box_coor[i][j][k] = np.array(self.box_coor[i][j][k])
 #                     print(f'boxes[{i}][{j}][{k}] = {self.box_id[i][j][k]}')
-        
         
         
     def neighbor_calc(self):
@@ -205,6 +209,27 @@ class Trajectory:
             f.SASA_calc(env, force_recalc)
 
 
+class Trajectory_slice:
+    def __init__(self, U, selection=None, frame_min=0, frame_max=1, use_CRYSOL=True, match_FoXS=False):
+        # Take in the "Universe" object (just the molecule) and create these things 
+        sel = U.select_atoms(selection)
+        self.Molecule = Molecule(sel, use_CRYSOL=use_CRYSOL, match_FoXS=match_FoXS)
+        self.Frames = []
+        if frame_max == 1:
+            for ts in U.trajectory:
+                self.Frames.append(Frame(sel.positions, self.Molecule))
+        else:
+            for ts in U.trajectory[frame_min:frame_max]:
+                self.Frames.append(Frame(sel.positions, self.Molecule))
+            
+    def SASA_calc_traj(self, env, force_recalc=False):
+        if (env.r_sol > 1.8) and (env.r_sol > self.Molecule.r_sol):
+            force_recalc = True
+        self.Molecule.r_sol = env.r_sol
+        for f in self.Frames:
+            f.SASA_calc(env, force_recalc)
+
+
 class Environment: # Sample environment related items
     def __init__(self, c1=1.0, 
                        c2=2.0, 
@@ -239,6 +264,7 @@ def load_form_factors(flavor='WaasKirf'):
     # a1 a2 a3 a4 c b1 b2 b3 b4
     if flavor == 'WaasKirf':
         fname = r'form_factors/f0_WaasKirf.dat'
+        # fname = r'/content/drive/My Drive/XS_calc/form_factors/f0_WaasKirf.dat' # for Google Colab)
     elif flavor == 'CromerMann':
         fname = r'form_factors/f0_CromerMann.dat'
         
@@ -345,16 +371,60 @@ def frame_XS_calc(frame, env, mea, ignoreSASA=False): # Calculate the X-ray scat
 
     return XS
 
-def traj_calc(traj, env, mea, ignoreSASA=False): # Calculate the X-ray scattering of an entire trajectory
-    
-    XS = []
 
-    for frame in traj.Frames:
+def frame_XS_calc_optim(frame, env, mea, ignoreSASA=False): # Calculate the X-ray scattering of a frame
+    if not ignoreSASA:
+        # Get the SASA calculated if not done
+        frame.SASA_calc(env)
+        
+    n_atoms = frame.mol.n_atoms
+
+    # Calculate adjusted form factors as a table.
+    FF_q = FF_calc(frame, env, mea)
     
-        # Calculate sturcture based on Debye formula and modified form factors
-        XS.append(frame_XS_calc(frame, env, mea, ignoreSASA))
+    # an i by j matrix of distances between all atoms
+    d_ij = np.sqrt(np.sum((frame.xyz[None,:,:]-frame.xyz[:,None,:])**2, axis=2))
+    
+    qd_ij = np.tile(mea.q[:, np.newaxis, np.newaxis], (n_atoms, n_atoms)) * d_ij
+
+    # Calculate scattering signal XS
+    XS = np.zeros(np.shape(mea.q))
+    for i in np.arange(n_atoms):
+        for j in np.arange(n_atoms-1)+1:
+            XS += 2 * FF_q[i] * FF_q[j] * np.sinc(qd_ij[:,i,j] / np.pi)
+        XS += FF_q[i] ** 2
+
+    return XS
+
+
+def traj_calc(traj, env, mea, ignoreSASA=False): # Calculate the X-ray scattering of an entire trajectory
+    tic = time.time()
+
+    # Create an iterable list of tuples for multiprocessing
+    # frame_init_iter = []
+    # for i in np.arange(len(traj.Frames)):
+    #     frame_init_iter.append((traj.Frames[i], env, mea))
+    
+    p = multiprocessing.Pool(processes=8)
+    XS = p.starmap(frame_XS_calc, frame_init_iter)
+
+
+    # pathos
+    # pool = ProcessPool(4)
+    # XS = pool.map(frame_XS_calc, frame_init_iter)
+        
+
+    # old loop for traj_calc without multiprocessing
+    # XS = []
+    # for frame in traj.Frames:
+    #     # Calculate sturcture based on Debye formula and modified form factors
+    #     XS.append(frame_XS_calc(frame, env, mea, ignoreSASA))
 
     XS = np.array(XS)
+
+    toc = time.time()
+
+    print('Done in {:.4f} seconds'.format(toc-tic))
 
     return XS
 
