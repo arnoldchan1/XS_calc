@@ -3,10 +3,11 @@
 import MDAnalysis as mda
 import numpy as np
 import time
-<<<<<<< HEAD
 import multiprocessing
 import dill
-from pathos.multiprocessing import ProcessPool
+
+# from pathos.multiprocessing import ProcessPool
+
 # from numba import njit, prange
 
 # @njit(parallel=True)
@@ -17,8 +18,6 @@ from pathos.multiprocessing import ProcessPool
 #     for i in prange(WPLen):
 #         distMat[i] = ((Wpos - Ppos)**2).sum(1)
 #     return distMat
-=======
->>>>>>> 6b730b2303760bfa130fe0d1f0eb282365840f34
 
 
 def time_ms(t1, t0, message=None): # Timing utility
@@ -226,17 +225,32 @@ class Trajectory:
 
 
 class Trajectory_slice:
-    def __init__(self, U, selection=None, frame_min=0, frame_max=1, use_CRYSOL=True, match_FoXS=False):
+    def __init__(self, U, selection=None, frame_min=0, frame_max=1, frame_step=0, use_CRYSOL=True, match_FoXS=False):
         # Take in the "Universe" object (just the molecule) and create these things 
         sel = U.select_atoms(selection)
         self.Molecule = Molecule(sel, use_CRYSOL=use_CRYSOL, match_FoXS=match_FoXS)
         self.Frames = []
-        if frame_max == 1:
-            for ts in U.trajectory:
-                self.Frames.append(Frame(sel.positions, self.Molecule))
+
+        if frame_step == 0:
+            # slicing from frame_min to frame_max
+            if frame_max == 1:
+                for ts in U.trajectory:
+                    self.Frames.append(Frame(sel.positions, self.Molecule))
+            else:
+                for ts in U.trajectory[frame_min:frame_max]:
+                    self.Frames.append(Frame(sel.positions, self.Molecule))
         else:
-            for ts in U.trajectory[frame_min:frame_max]:
+            # slicing with frame_step
+            num_of_frames = U.trajectory.n_frames
+            print('There are {:.1f} total frames'.format(num_of_frames))
+            print('Taking the first in every {:.1f} frames'.format(frame_step))
+            # indices = [frame_min]
+            # while indices[-1]+frame_step <= num_of_frames:
+            #     indices.append(indices[-1]+frame_step)
+            fiter = U.trajectory[::frame_step]
+            for ts in fiter:
                 self.Frames.append(Frame(sel.positions, self.Molecule))
+            
             
     def SASA_calc_traj(self, env, force_recalc=False):
         if (env.r_sol > 1.8) and (env.r_sol > self.Molecule.r_sol):
@@ -387,21 +401,6 @@ def frame_XS_calc(frame, env, mea, ignoreSASA=False): # Calculate the X-ray scat
 
     return XS
 
-<<<<<<< HEAD
-
-def frame_XS_calc_optim(frame, env, mea, ignoreSASA=False): # Calculate the X-ray scattering of a frame
-    if not ignoreSASA:
-        # Get the SASA calculated if not done
-        frame.SASA_calc(env)
-        
-    n_atoms = frame.mol.n_atoms
-
-    # Calculate adjusted form factors as a table.
-    FF_q = FF_calc(frame, env, mea)
-    
-    # an i by j matrix of distances between all atoms
-    d_ij = np.sqrt(np.sum((frame.xyz[None,:,:]-frame.xyz[:,None,:])**2, axis=2))
-=======
 def frame_XS_calc_fast(frame, env, mea, ignoreSASA=False, timing=False): # Calculate the X-ray scattering of a frame
     t0 = time.time()
     if not ignoreSASA:
@@ -470,32 +469,19 @@ def frame_XS_calc_exp(frame, env, mea, ignoreSASA=False, timing=False):
         time_ms(t3, t2, 'Xray')
     return XS
 
-def traj_calc(traj, env, mea, ignoreSASA=False): # Calculate the X-ray scattering of an entire trajectory
->>>>>>> 6b730b2303760bfa130fe0d1f0eb282365840f34
-    
-    qd_ij = np.tile(mea.q[:, np.newaxis, np.newaxis], (n_atoms, n_atoms)) * d_ij
-
-    # Calculate scattering signal XS
-    XS = np.zeros(np.shape(mea.q))
-    for i in np.arange(n_atoms):
-        for j in np.arange(n_atoms-1)+1:
-            XS += 2 * FF_q[i] * FF_q[j] * np.sinc(qd_ij[:,i,j] / np.pi)
-        XS += FF_q[i] ** 2
-
-    return XS
-
-
-def traj_calc(traj, env, mea, ignoreSASA=False): # Calculate the X-ray scattering of an entire trajectory
+def traj_calc(traj, env, mea, method="frame_XS_calc", ignoreSASA=False): # Calculate the X-ray scattering of an entire trajectory
     tic = time.time()
 
     # Create an iterable list of tuples for multiprocessing
-    # frame_init_iter = []
-    # for i in np.arange(len(traj.Frames)):
-    #     frame_init_iter.append((traj.Frames[i], env, mea))
+    frame_init_iter = []
+    for i in np.arange(len(traj.Frames)):
+        frame_init_iter.append((traj.Frames[i], env, mea))
     
     p = multiprocessing.Pool(processes=8)
-    XS = p.starmap(frame_XS_calc, frame_init_iter)
-
+    if method == "frame_XS_calc_fast":
+        XS = p.starmap(frame_XS_calc_fast, frame_init_iter)
+    else:
+        XS = p.starmap(frame_XS_calc, frame_init_iter)
 
     # pathos
     # pool = ProcessPool(4)
