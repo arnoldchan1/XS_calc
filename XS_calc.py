@@ -2,6 +2,7 @@
 
 import MDAnalysis as mda
 import numpy as np
+from scipy.optimize import minimize
 import time
 import multiprocessing
 import dill
@@ -244,12 +245,14 @@ class Trajectory_slice:
             num_of_frames = U.trajectory.n_frames
             print('There are {:.1f} total frames'.format(num_of_frames))
             print('Taking the first in every {:.1f} frames'.format(frame_step))
-            # indices = [frame_min]
-            # while indices[-1]+frame_step <= num_of_frames:
-            #     indices.append(indices[-1]+frame_step)
-            fiter = U.trajectory[::frame_step]
-            for ts in fiter:
-                self.Frames.append(Frame(sel.positions, self.Molecule))
+
+            for ts in U.trajectory:
+                if (ts.frame - frame_min) % frame_step == 0:
+                    self.Frames.append(Frame(sel.positions, self.Molecule))
+            
+            # fiter = U.trajectory[frame_min:frame_max:frame_step]
+            # for ts in fiter:
+            #     self.Frames.append(Frame(sel.positions, self.Molecule))
             
             
     def SASA_calc_traj(self, env, force_recalc=False):
@@ -283,7 +286,15 @@ class Experiment: # Experimental data
         self.q = q
         self.S_exp = S_exp
         self.S_err = S_err
+        self.XS = []
+        self.c = []
+
     def fit_to_experiment(self, XS):
+        XS_avg = np.mean(XS, axis=0)
+        chi2_fun = lambda x: np.sqrt(np.mean( ((XS_avg - (self.S_exp * x[0] + x[1]))/self.S_err)**2 ))
+        res = minimize(chi2_fun, (1,0), method='CG')
+        self.c = res.x
+        self.XS = (XS - res.x[1])/res.x[0]
         pass
 
 
@@ -501,6 +512,30 @@ def traj_calc(traj, env, mea, method="frame_XS_calc", ignoreSASA=False): # Calcu
     print('Done in {:.4f} seconds'.format(toc-tic))
 
     return XS
+
+def fit_XS(XS, exp):
+    XS_avg = np.mean(XS, axis=0)
+    chi2_fun = lambda x: np.sqrt(np.mean( ((XS_avg - (exp.S_exp * x[0] + x[1]))/exp.S_err)**2 ))
+    res = minimize(chi2_fun, (1,0), method='CG')
+    return np.array([chi2_fun(res.x), res.x[0], res.x[1]])
+
+
+def c_search(traj, mea, exp, c1_grid=np.arange(0.95,1.051,0.005), c2_grid=np.arange(-2.0,4.01,0.05)):
+    chi2_grid = np.zeros((len(c1_grid), len(c2_grid), 3))
+    for c1_i, c1_val in enumerate(c1_grid):
+        for c2_i, c2_val in enumerate(c2_grid):
+            c_grid = Environment(c1=c1_val, c2=c2_val)
+            XS = traj_calc(traj, c_grid, mea, "frame_XS_calc_fast")
+            chi2_grid[c1_i, c2_i, :] = fit_XS(XS, exp)
+
+    chi2_grid_mat = chi2_grid[:,:,0]
+    c_best_idx = np.unravel_idx(chi2_grid_mat.argmin(), chi2_grid_mat.shape)
+    c1_best = c1_grid[c_best_idx[0]]
+    c2_best = c2_grid[c_best_idx[1]]
+    return c1_best, c2_best, chi2_grid 
+
+
+
 
 
 if __name__ == "__main__":
