@@ -480,7 +480,8 @@ def frame_XS_calc_exp(frame, env, mea, ignoreSASA=False, timing=False):
         time_ms(t3, t2, 'Xray')
     return XS
 
-def traj_calc(traj, env, mea, method="frame_XS_calc", ignoreSASA=False): # Calculate the X-ray scattering of an entire trajectory
+# Calculate the X-ray scattering of an entire trajectory
+def traj_calc(traj, env, mea, method="frame_XS_calc", n_processes=8, ignoreSASA=False): 
     tic = time.time()
 
     # Create an iterable list of tuples for multiprocessing
@@ -488,7 +489,7 @@ def traj_calc(traj, env, mea, method="frame_XS_calc", ignoreSASA=False): # Calcu
     for i in np.arange(len(traj.Frames)):
         frame_init_iter.append((traj.Frames[i], env, mea))
     
-    p = multiprocessing.Pool(processes=8)
+    p = multiprocessing.Pool(processes=n_processes)
     if method == "frame_XS_calc_fast":
         XS = p.starmap(frame_XS_calc_fast, frame_init_iter)
     else:
@@ -520,16 +521,16 @@ def fit_XS(XS, exp):
     return np.array([chi2_fun(res.x), res.x[0], res.x[1]])
 
 
-def c_search(traj, mea, exp, c1_grid=np.arange(0.95,1.051,0.005), c2_grid=np.arange(-2.0,4.01,0.05)):
+def c_search(traj, mea, exp, c1_grid=np.arange(0.95,1.051,0.005), c2_grid=np.arange(-2.0,4.01,0.05), n_processes=8):
     chi2_grid = np.zeros((len(c1_grid), len(c2_grid), 3))
     for c1_i, c1_val in enumerate(c1_grid):
         for c2_i, c2_val in enumerate(c2_grid):
             c_grid = Environment(c1=c1_val, c2=c2_val)
-            XS = traj_calc(traj, c_grid, mea, "frame_XS_calc_fast")
+            XS = traj_calc(traj, c_grid, mea, "frame_XS_calc_fast", n_processes)
             chi2_grid[c1_i, c2_i, :] = fit_XS(XS, exp)
 
     chi2_grid_mat = chi2_grid[:,:,0]
-    c_best_idx = np.unravel_idx(chi2_grid_mat.argmin(), chi2_grid_mat.shape)
+    c_best_idx = np.unravel_index(chi2_grid_mat.argmin(), chi2_grid_mat.shape)
     c1_best = c1_grid[c_best_idx[0]]
     c2_best = c2_grid[c_best_idx[1]]
     return c1_best, c2_best, chi2_grid 
