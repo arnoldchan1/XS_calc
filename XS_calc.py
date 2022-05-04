@@ -305,7 +305,7 @@ def load_form_factors(dir="./form_factors",flavor='WaasKirf'):
         fname = dir+r'/f0_WaasKirf.dat'
         # fname = r'/content/drive/My Drive/XS_calc/form_factors/f0_WaasKirf.dat' # for Google Colab)
     elif flavor == 'CromerMann':
-        fname = r'/f0_CromerMann.dat'
+        fname = dir+r'/f0_CromerMann.dat'
         
     with open(fname) as f:
         content = f.readlines()
