@@ -1,5 +1,3 @@
-
-
 import MDAnalysis as mda
 import numpy as np
 from scipy.optimize import minimize
@@ -85,7 +83,7 @@ class Frame:
                     self.box_id[i][j][k] = []
                     self.box_coor[i][j][k] = []
         
-        
+       
         # Assort each point to bins
         for idx, xyz in enumerate(self.xyz - self.min_xyz):
             x, y, z = np.ceil(xyz[0]/self.mol.cutoff), np.ceil(xyz[1]/self.mol.cutoff), np.ceil(xyz[2]/self.mol.cutoff)
@@ -99,7 +97,7 @@ class Frame:
                     self.box_coor[i][j][k] = np.array(self.box_coor[i][j][k])
 #                     print(f'boxes[{i}][{j}][{k}] = {self.box_id[i][j][k]}')
         
-        
+       
     def neighbor_calc(self):
         # This breaks down when protein is of certain size
         self.neighbor_list = {}
@@ -207,7 +205,7 @@ class Frame:
             return # Do nothing and return
     
         
-        
+       
 class Trajectory:
     def __init__(self, U, selection=None, use_CRYSOL=True, match_FoXS=False):
         # Take in the "Universe" object (just the molecule) and create these things 
@@ -254,7 +252,7 @@ class Trajectory_slice:
             # for ts in fiter:
             #     self.Frames.append(Frame(sel.positions, self.Molecule))
             
-            
+           
     def SASA_calc_traj(self, env, force_recalc=False):
         if (env.r_sol > 1.8) and (env.r_sol > self.Molecule.r_sol):
             force_recalc = True
@@ -304,10 +302,10 @@ def load_form_factors(flavor='WaasKirf'):
     # 9 coefficients for CromerMann table
     # a1 a2 a3 a4 c b1 b2 b3 b4
     if flavor == 'WaasKirf':
-        fname = r'form_factors/f0_WaasKirf.dat'
+        fname = r'XS_calc/form_factors/f0_WaasKirf.dat'
         # fname = r'/content/drive/My Drive/XS_calc/form_factors/f0_WaasKirf.dat' # for Google Colab)
     elif flavor == 'CromerMann':
-        fname = r'form_factors/f0_CromerMann.dat'
+        fname = r'XS_calc/form_factors/f0_CromerMann.dat'
         
     with open(fname) as f:
         content = f.readlines()
@@ -542,5 +540,3 @@ def c_search(traj, mea, exp, c1_grid=np.arange(0.95,1.051,0.005), c2_grid=np.ara
 if __name__ == "__main__":
     U = mda.Universe('data/Ala10.pdb')
     
-
-
