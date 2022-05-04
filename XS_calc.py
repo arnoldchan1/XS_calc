@@ -42,8 +42,8 @@ def raster_unit_sphere(num=200):
 class Molecule: 
 # Invariant part of the trajectory, for example atoms' vdW radii
 
-    def __init__(self, sel, use_CRYSOL=True, match_FoXS=False):
-        FF_ref = load_form_factors()
+    def __init__(self, sel, ffdir, use_CRYSOL=True, match_FoXS=False):
+        FF_ref = load_form_factors(dir=ffdir)
         vdW_ref = load_vdW_radii(use_CRYSOL=use_CRYSOL, match_FoXS=match_FoXS)
         # self.elements = sel.atoms.elements # Is a numpy array of ['C', 'N' ...]
         self.elements = [a.type[0] for a in sel.atoms]
@@ -207,10 +207,10 @@ class Frame:
         
        
 class Trajectory:
-    def __init__(self, U, selection=None, use_CRYSOL=True, match_FoXS=False):
+    def __init__(self, U, ffdir='./', selection=None, use_CRYSOL=True, match_FoXS=False):
         # Take in the "Universe" object (just the molecule) and create these things 
         sel = U.select_atoms(selection)
-        self.Molecule = Molecule(sel, use_CRYSOL=use_CRYSOL, match_FoXS=match_FoXS)
+        self.Molecule = Molecule(sel, ffdir, use_CRYSOL=use_CRYSOL, match_FoXS=match_FoXS)
         self.Frames = []
         for ts in U.trajectory:
             self.Frames.append(Frame(sel.positions, self.Molecule))
@@ -224,10 +224,10 @@ class Trajectory:
 
 
 class Trajectory_slice:
-    def __init__(self, U, selection=None, frame_min=0, frame_max=1, frame_step=0, use_CRYSOL=True, match_FoXS=False):
+    def __init__(self, U, ffdir='./', selection=None, frame_min=0, frame_max=1, frame_step=0, use_CRYSOL=True, match_FoXS=False):
         # Take in the "Universe" object (just the molecule) and create these things 
         sel = U.select_atoms(selection)
-        self.Molecule = Molecule(sel, use_CRYSOL=use_CRYSOL, match_FoXS=match_FoXS)
+        self.Molecule = Molecule(sel, ffdir, use_CRYSOL=use_CRYSOL, match_FoXS=match_FoXS)
         self.Frames = []
 
         if frame_step == 0:
@@ -296,16 +296,16 @@ class Experiment: # Experimental data
         pass
 
 
-def load_form_factors(flavor='WaasKirf'):
+def load_form_factors(dir="./form_factors",flavor='WaasKirf'):
     # Return a dictionary containing the 11 coefficients from the WaasKirf table for each atom type
     # a1 a2 a3 a4 a5 c b1 b2 b3 b4 b5
     # 9 coefficients for CromerMann table
     # a1 a2 a3 a4 c b1 b2 b3 b4
     if flavor == 'WaasKirf':
-        fname = r'XS_calc/form_factors/f0_WaasKirf.dat'
+        fname = dir+r'/f0_WaasKirf.dat'
         # fname = r'/content/drive/My Drive/XS_calc/form_factors/f0_WaasKirf.dat' # for Google Colab)
     elif flavor == 'CromerMann':
-        fname = r'XS_calc/form_factors/f0_CromerMann.dat'
+        fname = r'/f0_CromerMann.dat'
         
     with open(fname) as f:
         content = f.readlines()
