@@ -42,8 +42,8 @@ def raster_unit_sphere(num=200):
 class Molecule: 
 # Invariant part of the trajectory, for example atoms' vdW radii
 
-    def __init__(self, sel, use_CRYSOL=True, match_FoXS=False):
-        FF_ref = load_form_factors()
+    def __init__(self, sel, ffdir, use_CRYSOL=True, match_FoXS=False):
+        FF_ref = load_form_factors(dir=ffdir)
         vdW_ref = load_vdW_radii(use_CRYSOL=use_CRYSOL, match_FoXS=match_FoXS)
         # self.elements = sel.atoms.elements # Is a numpy array of ['C', 'N' ...]
         self.elements = [a.type[0] for a in sel.atoms]
@@ -83,7 +83,7 @@ class Frame:
                     self.box_id[i][j][k] = []
                     self.box_coor[i][j][k] = []
         
-        
+       
         # Assort each point to bins
         for idx, xyz in enumerate(self.xyz - self.min_xyz):
             x, y, z = np.ceil(xyz[0]/self.mol.cutoff), np.ceil(xyz[1]/self.mol.cutoff), np.ceil(xyz[2]/self.mol.cutoff)
@@ -97,7 +97,7 @@ class Frame:
                     self.box_coor[i][j][k] = np.array(self.box_coor[i][j][k])
 #                     print(f'boxes[{i}][{j}][{k}] = {self.box_id[i][j][k]}')
         
-        
+       
     def neighbor_calc(self):
         # This breaks down when protein is of certain size
         self.neighbor_list = {}
@@ -205,12 +205,12 @@ class Frame:
             return # Do nothing and return
     
         
-        
+       
 class Trajectory:
-    def __init__(self, U, selection=None, use_CRYSOL=True, match_FoXS=False):
+    def __init__(self, U, ffdir='./', selection=None, use_CRYSOL=True, match_FoXS=False):
         # Take in the "Universe" object (just the molecule) and create these things 
         sel = U.select_atoms(selection)
-        self.Molecule = Molecule(sel, use_CRYSOL=use_CRYSOL, match_FoXS=match_FoXS)
+        self.Molecule = Molecule(sel, ffdir, use_CRYSOL=use_CRYSOL, match_FoXS=match_FoXS)
         self.Frames = []
         for ts in U.trajectory:
             self.Frames.append(Frame(sel.positions, self.Molecule))
@@ -224,10 +224,10 @@ class Trajectory:
 
 
 class Trajectory_slice:
-    def __init__(self, U, selection=None, frame_min=0, frame_max=1, frame_step=0, use_CRYSOL=True, match_FoXS=False):
+    def __init__(self, U, ffdir='./', selection=None, frame_min=0, frame_max=1, frame_step=0, use_CRYSOL=True, match_FoXS=False):
         # Take in the "Universe" object (just the molecule) and create these things 
         sel = U.select_atoms(selection)
-        self.Molecule = Molecule(sel, use_CRYSOL=use_CRYSOL, match_FoXS=match_FoXS)
+        self.Molecule = Molecule(sel, ffdir, use_CRYSOL=use_CRYSOL, match_FoXS=match_FoXS)
         self.Frames = []
 
         if frame_step == 0:
@@ -252,7 +252,7 @@ class Trajectory_slice:
             # for ts in fiter:
             #     self.Frames.append(Frame(sel.positions, self.Molecule))
             
-            
+           
     def SASA_calc_traj(self, env, force_recalc=False):
         if (env.r_sol > 1.8) and (env.r_sol > self.Molecule.r_sol):
             force_recalc = True
@@ -296,16 +296,16 @@ class Experiment: # Experimental data
         pass
 
 
-def load_form_factors(flavor='WaasKirf'):
+def load_form_factors(dir="./form_factors",flavor='WaasKirf'):
     # Return a dictionary containing the 11 coefficients from the WaasKirf table for each atom type
     # a1 a2 a3 a4 a5 c b1 b2 b3 b4 b5
     # 9 coefficients for CromerMann table
     # a1 a2 a3 a4 c b1 b2 b3 b4
     if flavor == 'WaasKirf':
-        fname = r'form_factors/f0_WaasKirf.dat'
+        fname = dir+r'/f0_WaasKirf.dat'
         # fname = r'/content/drive/My Drive/XS_calc/form_factors/f0_WaasKirf.dat' # for Google Colab)
     elif flavor == 'CromerMann':
-        fname = r'form_factors/f0_CromerMann.dat'
+        fname = dir+r'/f0_CromerMann.dat'
         
     with open(fname) as f:
         content = f.readlines()
@@ -667,4 +667,4 @@ def eom(XS_T, S_exp, S_err, N=20, K=50, M=5000, p_switch=0.2, bias=False):
 
 if __name__ == "__main__":
     U = mda.Universe('data/Ala10.pdb')
-    
+
