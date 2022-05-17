@@ -59,7 +59,7 @@ class Frame:
     def __init__(self, xyz, mol):
         self.xyz = xyz
         self.SASA = np.zeros(len(xyz))
-        print(f'The protein has {len(xyz)} atoms')
+        #print(f'The protein has {len(xyz)} atoms')
         self.isSASAcalculated = False # Until we have the SASA calculated
         self.mol = mol
         self.SASA_A2 = 0  # SASA in angstrom squared
@@ -522,6 +522,7 @@ def fit_XS(XS, exp):
 def c_search(traj, mea, exp, c1_grid=np.arange(0.95,1.051,0.005), c2_grid=np.arange(-2.0,4.01,0.05), n_processes=8):
     chi2_grid = np.zeros((len(c1_grid), len(c2_grid), 3))
     for c1_i, c1_val in enumerate(c1_grid):
+        print(f'Trying c1 = {c1_val}')
         for c2_i, c2_val in enumerate(c2_grid):
             c_grid = Environment(c1=c1_val, c2=c2_val)
             XS = traj_calc(traj, c_grid, mea, "frame_XS_calc_fast", n_processes)
