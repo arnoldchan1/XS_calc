@@ -63,6 +63,8 @@ class Frame:
         self.isSASAcalculated = False # Until we have the SASA calculated
         self.mol = mol
         self.SASA_A2 = 0  # SASA in angstrom squared
+        self.q_cache = None
+        self.FF_q_cache = None
         
     def spatial_decomposition(self):
         self.min_xyz = np.min(self.xyz, axis=0) - self.mol.cutoff
@@ -278,6 +280,8 @@ class Environment: # Sample environment related items
 class Measurement: # Measurement related items, for now just the q vector
     def __init__(self, q):
         self.q = q
+        if self.q[0] == 0.0:
+            self.q[0] = 1e-15
 
 class Experiment: # Experimental data
     def __init__(self, q, S_exp, S_err):
@@ -360,34 +364,39 @@ def load_vdW_radii(use_CRYSOL=True, match_FoXS=False):
     return vdW_table
 
 def FF_calc(frame, env, mea):
-    # Calculate f(q, c1, c2) based on the q in measurement (mea), c1 and c2 in environment (env), and SASA in the frame
-
-    # get s from q
-    s = mea.q / (4 * np.pi)
-
-    # anonymous function to calculate in vacuo form factors
-    fv_func = lambda sval, a: np.sum(a[None, :5] * np.exp(-a[None, 6:] * sval[:, None] ** 2), axis=1) + a[5]
-
-    # anonymous function to calculate C1, excluded volume adjustent coefficient
-    #C1_func = lambda c1, q, rm: (c1 ** 3) * np.exp(-((4.0*math.pi/3.0)**(1.5)*(q**2)*(rm**2)*(c1**2-1.0)) / (4.0*math.pi))
-    C1_func = lambda c1, q, rm: (c1 ** 3) * np.exp((-(4*np.pi/3)**(1.5)*(q**2)*(rm**2)*(c1**2-1))/(4*np.pi))
-
-    # anonymous function to calculate excluded volue form factors
-    # Fraser, R. D. B., T. P. MacRae and E. Suzuki. 1978. J. Appl. Cryst. 11:693-694
-#     fs_func = lambda q, r0: math.pi**(1.5)*r0**3*env.rho*np.exp(-math.pi*(math.pi**(1.5)*r0**3)**(2/3)*q**2) 
-#                               v_i               rho                      
-    fs_func = lambda q, r0: (4.0/3.0*np.pi*(r0**3)) * env.rho * np.exp(-np.pi * ((4.0/3.0*np.pi*(r0**3))**(2.0/3.0)) * (q**2))  # Fraser's version
-#     fs_func = lambda q, r0: (4.0/3.0*math.pi*(r0**3)) * env.rho * np.exp(-math.pi * ((4.0/3.0*math.pi*(r0**3))**(2.0/3.0)) * (q**2) / (4 * math.pi)) # FoXS's version
-#     fs_func = lambda q, r0: (4.0/3.0*math.pi*(r0**3)) * env.rho * np.exp(-math.pi * (r0**2) * (q**2) )  # Darren's version
-
-    # form factor of water with radius 1.67 A
-    fw = fv_func(s,np.array([2.960427, 2.508818, 0.637853, 0.722838, 1.142756, 0.027014, 14.182259, 5.936858, 0.112726, 34.958481, 0.390240])) + 2 * fv_func(s,np.array([0.413048, 0.294953, 0.187491, 0.080701, 0.023736, 0.000049, 15.569946, 32.398468, 5.711404, 61.889874, 1.334118])) - C1_func(env.c1, s, env.r_m) * fs_func(s, 1.67) #1.6673)
+    if np.all(mea.q == frame.q_cache):
+        # Just return cache
+        return frame.FF_q_cache
+    else:
+        # Calculate f(q, c1, c2) based on the q in measurement (mea), c1 and c2 in environment (env), and SASA in the frame
     
-    FF_q = [] # n_atoms by len(q) matrix
-    for i in np.arange(len(frame.mol.elements)):
-        FF_q.append(fv_func(s, frame.mol.FF[i,:]) - C1_func(env.c1,s,env.r_m)*fs_func(s,frame.mol.vdW[i]) + env.c2*frame.SASA[i]*fw)
+        # get s from q
+        s = mea.q / (4 * np.pi)
+    
+        # anonymous function to calculate in vacuo form factors
+        fv_func = lambda sval, a: np.sum(a[None, :5] * np.exp(-a[None, 6:] * sval[:, None] ** 2), axis=1) + a[5]
+    
+        # anonymous function to calculate C1, excluded volume adjustent coefficient
+        #C1_func = lambda c1, q, rm: (c1 ** 3) * np.exp(-((4.0*math.pi/3.0)**(1.5)*(q**2)*(rm**2)*(c1**2-1.0)) / (4.0*math.pi))
+        C1_func = lambda c1, q, rm: (c1 ** 3) * np.exp((-(4*np.pi/3)**(1.5)*(q**2)*(rm**2)*(c1**2-1))/(4*np.pi))
+    
+        # anonymous function to calculate excluded volue form factors
+        # Fraser, R. D. B., T. P. MacRae and E. Suzuki. 1978. J. Appl. Cryst. 11:693-694
+    #     fs_func = lambda q, r0: math.pi**(1.5)*r0**3*env.rho*np.exp(-math.pi*(math.pi**(1.5)*r0**3)**(2/3)*q**2) 
+    #                               v_i               rho                      
+        fs_func = lambda q, r0: (4.0/3.0*np.pi*(r0**3)) * env.rho * np.exp(-np.pi * ((4.0/3.0*np.pi*(r0**3))**(2.0/3.0)) * (q**2))  # Fraser's version
+    #     fs_func = lambda q, r0: (4.0/3.0*math.pi*(r0**3)) * env.rho * np.exp(-math.pi * ((4.0/3.0*math.pi*(r0**3))**(2.0/3.0)) * (q**2) / (4 * math.pi)) # FoXS's version
+    #     fs_func = lambda q, r0: (4.0/3.0*math.pi*(r0**3)) * env.rho * np.exp(-math.pi * (r0**2) * (q**2) )  # Darren's version
+    
+        # form factor of water with radius 1.67 A
+        fw = fv_func(s,np.array([2.960427, 2.508818, 0.637853, 0.722838, 1.142756, 0.027014, 14.182259, 5.936858, 0.112726, 34.958481, 0.390240])) + 2 * fv_func(s,np.array([0.413048, 0.294953, 0.187491, 0.080701, 0.023736, 0.000049, 15.569946, 32.398468, 5.711404, 61.889874, 1.334118])) - C1_func(env.c1, s, env.r_m) * fs_func(s, 1.67) #1.6673)
         
-    return np.array(FF_q)
+        FF_q = [] # n_atoms by len(q) matrix
+        for i in np.arange(len(frame.mol.elements)):
+            FF_q.append(fv_func(s, frame.mol.FF[i,:]) - C1_func(env.c1,s,env.r_m)*fs_func(s,frame.mol.vdW[i]) + env.c2*frame.SASA[i]*fw)
+        frame.FF_q_cache = np.copy(FF_q)
+        frame.q_cache = np.copy(mea.q)
+        return np.array(FF_q)
 
 def frame_XS_calc(frame, env, mea, ignoreSASA=False): # Calculate the X-ray scattering of a frame
     if not ignoreSASA:
@@ -490,9 +499,11 @@ def traj_calc(traj, env, mea, method="frame_XS_calc", n_processes=8, ignoreSASA=
     p = multiprocessing.Pool(processes=n_processes)
     if method == "frame_XS_calc_fast":
         XS = p.starmap(frame_XS_calc_fast, frame_init_iter)
+    elif method == 'frame_XS_calc_fast_mod':
+        XS = p.starmap(frame_XS_calc_fast_mod, frame_init_iter)
     else:
         XS = p.starmap(frame_XS_calc, frame_init_iter)
-
+    p.close()
     # pathos
     # pool = ProcessPool(4)
     # XS = pool.map(frame_XS_calc, frame_init_iter)
@@ -669,3 +680,35 @@ def eom(XS_T, S_exp, S_err, N=20, K=50, M=5000, p_switch=0.2, bias=False):
 if __name__ == "__main__":
     U = mda.Universe('data/Ala10.pdb')
 
+def frame_XS_calc_fast_mod(frame, env, mea, ignoreSASA=False, timing=False): # Calculate the X-ray scattering of a frame
+    t0 = time.time()
+    if not ignoreSASA:
+        # Get the SASA calculated if not done
+        frame.SASA_calc(env)
+    t1 = time.time()
+    # Calculate adjusted form factors as a table.
+    FF_q = FF_calc(frame, env, mea)
+    #print(FF_q.shape)
+    #FF_qt = FF_q.T
+    t2 = time.time()
+    # an i by j matrix of distances between all atoms
+    d_ij = np.sqrt(np.sum((frame.xyz[None,:,:]-frame.xyz[:,None,:])**2, axis=2))
+    d_ij += np.eye(len(d_ij)) * 1e-15
+    t3 = time.time()
+
+    # Calculate scattering signal XS - currently this is quite slow. There has to be a way to make it faster
+    XS = np.zeros_like(mea.q)
+
+
+# This q by q version is pretty good
+    for idx, q in enumerate(mea.q):
+        d_ijq = d_ij * q
+        XS[idx] = np.sum(FF_q[:,idx][None,:] * FF_q[:,idx][:,None] * np.sin(d_ijq) / d_ijq)
+    t4 = time.time()
+    
+    if timing:
+        time_ms(t1, t0, 'SASA')
+        time_ms(t2, t1, '  FF')
+        time_ms(t3, t2, 'dist')
+        time_ms(t4, t3, 'Xray')
+    return XS
