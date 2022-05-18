@@ -435,7 +435,6 @@ def frame_XS_calc_fast(frame, env, mea, ignoreSASA=False, timing=False): # Calcu
 
     # Calculate scattering signal XS - currently this is quite slow. There has to be a way to make it faster
     XS = np.zeros(np.shape(mea.q))
-#     print((FF_q[:,None,:] * FF_q[:,:,None]).shape)
 
 # This huge one-liner is slow
 #     XS = np.sum((FF_q[:,None,:] * FF_q[:,:,None]) * np.sinc(mea.q[:, None, None] * d_ij[None,:,:] / np.pi), axis=(-1, -2))
@@ -444,17 +443,10 @@ def frame_XS_calc_fast(frame, env, mea, ignoreSASA=False, timing=False): # Calcu
     for idx, q in enumerate(mea.q):
         if q == 0.0:
             XS[idx] = np.sum((FF_q[:,idx][None,:] * FF_q[:, idx][:,None]))
-#         XS[idx] = np.sum((FF_q[:,idx][None,:] * FF_q[:, idx][:,None]) * np.sinc(d_ij * q / np.pi))
         else:
             XS[idx] = np.sum((FF_q[:,idx][None,:] * FF_q[:, idx][:,None]) * np.sin(d_ij * q) / (d_ij * q))
     t4 = time.time()
     
-# This element by element version is really slow
-#     for i in np.arange(frame.mol.n_atoms):
-#         for j in np.arange(i+1, frame.mol.n_atoms):
-#             qd = mea.q * d_ij[i,j]
-#             XS += 2 * FF_q[i] * FF_q[j] * np.sinc(qd / np.pi)
-#         XS += FF_q[i] ** 2
 
     if timing:
         time_ms(t1, t0, 'SASA')
