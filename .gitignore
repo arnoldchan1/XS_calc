@@ -153,3 +153,5 @@ cython_debug/
 
 
 .DS_Store
+*.dcd
+data/20220404_trpcage_reconstructed_saxs.h5
