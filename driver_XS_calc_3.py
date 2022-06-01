@@ -41,7 +41,7 @@ hf.create_dataset('XS_pool', data=XS_pool)
 hf.close()
 
 # Save to a pickle
-XS_pool = pickle.dump(XS_pool, open('1l2y_REST2_XS_20220527.pkl', 'wb'))
+pickle.dump(XS_pool, open('1l2y_REST2_XS_20220601.pkl', 'wb'))
 
 toc = time.time()
 print('Job finished in {:.3f} seconds'.format(toc-tic))
