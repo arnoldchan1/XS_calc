@@ -35,7 +35,7 @@ for c1c2 in c1c2_product:
     XS_pool[c1c2] = traj_calc(traj, env, mea, method='frame_XS_calc_fast', n_processes=52)
 
 # Save to a hdf5
-hf = h5py.File('1l2y_REST2_XS_20220527.h5', 'w')
+hf = h5py.File('1l2y_REST2_XS_20220601.h5', 'w')
 hf.create_dataset('q', data=mea.q)
 hf.create_dataset('XS_pool', data=XS_pool)
 hf.close()
