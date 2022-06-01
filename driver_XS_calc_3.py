@@ -34,14 +34,14 @@ for c1c2 in c1c2_product:
     env = Environment(c1=c1, c2=c2)
     XS_pool[c1c2] = traj_calc(traj, env, mea, method='frame_XS_calc_fast', n_processes=52)
 
-# Save to a pickle
-XS_pool = pickle.load(open('1l2y_REST2_XS)20220527.pkl', 'wb'))
-
 # Save to a hdf5
 hf = h5py.File('1l2y_REST2_XS_20220527.h5', 'w')
 hf.create_dataset('q', data=mea.q)
 hf.create_dataset('XS_pool', data=XS_pool)
 hf.close()
+
+# Save to a pickle
+XS_pool = pickle.dump(XS_pool, open('1l2y_REST2_XS_20220527.pkl', 'wb'))
 
 toc = time.time()
 print('Job finished in {:.3f} seconds'.format(toc-tic))
