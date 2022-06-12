@@ -239,8 +239,40 @@ def fit_pool(obj):
 	GA.evolve(n, silence=True)
 	return GA
 
+# Function to save GA pools to hdf5 files
+def save_ga_pool_h5(ga_pool, filename):
+    best_fitness = []
+    label = []
+    bf_gene_indices = []
+    bf_chrom = []
+    bf_chrom_av = []
+
+    for i in np.arange(len(ga_pool)):
+        ga = ga_pool[i]
+
+        best_fitness.append(ga.best_fitness)
+        label.append(ga.label)
+
+        bf_gene_indices.append(ga.chromosome_pool[0].gene_indices)
+
+        bf = ga.get_best_fit()
+        bf_chrom.append(bf[1])
+        bf_chrom_av.append(bf[0])
+
+    # ga_dict = dict([('label', label), ('best_fitness', best_fitness), ('bf_gene_indices', bf_gene_indices), ('bf_chrom', bf_chrom), ('bf_chrom_av', bf_chrom_av)])
+    hf = h5py.File(filename, 'w')
+    hf.create_dataset('label', data=label)
+    hf.create_dataset('best_fitness', data=best_fitness)
+    hf.create_dataset('bf_gene_indices', data=bf_gene_indices)
+    hf.create_dataset('bf_chrom', data=bf_chrom)
+    hf.create_dataset('bf_chrom_av', data=bf_chrom_av)
+    hf.close()
+  pass
+
 # Get keys (c1/c2) as a list
 key_sel = list(XS_pool.keys())
+# Save the list of (c1/c2) tuples
+pickle.dump(key_sel, open('1l2y_GA_pool_keysel_20220611.pkl', 'wb'))
 
 
 # Setup Folded GA pool
@@ -252,9 +284,9 @@ F_GA_pool = pool.map(fit_pool, zip(F_GA_pool, [200]*len(F_GA_pool)))
 pool.close()
 pool.join()
 
-# Save output to a pickle
-pickle.dump(F_GA_pool, open('1l2y_F_GA_pool_20220606.pkl', 'wb'))
-
+# Save output
+save_ga_pool_h5(F_GA_pool, '1l2y_GA_pool_F_20220611.h5')
+del F_GA_pool
 
 # Setup Intermediate GA pool
 Itr_GA_pool = [GeneticAlgorithm(XS_pool[x], I_tr.S_exp, I_tr.S_err, label=f'({x[0]:.2f}, {x[1]:.1f})', 
@@ -265,8 +297,9 @@ Itr_GA_pool = pool.map(fit_pool, zip(Itr_GA_pool, [500]*len(Itr_GA_pool)))
 pool.close()
 pool.join()
 
-# Save output to a pickle
-pickle.dump(Itr_GA_pool, open('1l2y_Itr_GA_pool_20220606.pkl', 'wb'))
+# Save output
+save_ga_pool_h5(Itr_GA_pool, '1l2y_GA_pool_Itr_20220611.h5')
+del Itr_GA_pool
 
 
 # Setup Unfolded_tr GA pool
@@ -278,8 +311,9 @@ Utr_GA_pool = pool.map(fit_pool, zip(Utr_GA_pool, [500]*len(Utr_GA_pool)))
 pool.close()
 pool.join()
 
-# Save output to a pickle
-pickle.dump(Utr_GA_pool, open('1l2y_Utr_GA_pool_20220606.pkl', 'wb'))
+# Save output
+save_ga_pool_h5(Utr_GA_pool, '1l2y_GA_pool_Utr_20220611.h5')
+del Utr_GA_pool
 
 
 # Setup Unfolded GA pool
@@ -291,6 +325,7 @@ U_GA_pool = pool.map(fit_pool, zip(U_GA_pool, [500]*len(U_GA_pool)))
 pool.close()
 pool.join()
 
-# Save output to a pickle
-pickle.dump(U_GA_pool, open('1l2y_U_GA_pool_20220606.pkl', 'wb'))
+# Save output
+save_ga_pool_h5(U_GA_pool, '1l2y_GA_pool_U_20220611.h5')
+del U_GA_pool
 
