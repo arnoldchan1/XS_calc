@@ -267,7 +267,7 @@ def save_ga_pool_h5(ga_pool, filename):
     hf.create_dataset('bf_chrom', data=bf_chrom)
     hf.create_dataset('bf_chrom_av', data=bf_chrom_av)
     hf.close()
-  pass
+    pass
 
 # Get keys (c1/c2) as a list
 key_sel = list(XS_pool.keys())
