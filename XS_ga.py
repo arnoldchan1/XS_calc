@@ -2,6 +2,7 @@ import numpy as np
 from scipy.optimize import minimize
 import multiprocessing as mp
 import time
+import h5py
 
 def fit_chromosome(chromosome):
     chromosome.fit()
