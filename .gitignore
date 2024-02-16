@@ -165,3 +165,15 @@ data/1l2y_Itr_GA_pool_20220606.pkl
 data/1l2y_Itr_GA_pool_20220606.pkl
 1l2y_GA_pool_keysel_20220611.pkl
 1l2y_Itr_GA_50c_5000n_10r_2.h5
+data/1l2y_eq_300K_XS.pkl
+data/1l2y_eq_300K.dcd
+data/1l2y_eq_300K.psf
+data/20220913_imotif_dSexp_F.txt
+data/20220913_imotif_dSexp_I.txt
+data/20220913_imotif_Sexp_F.txt
+data/20220913_imotif_Sexp_gs.txt
+data/20220913_imotif_Sexp_I.txt
+data/ccctaa.prmtop
+data/ccctaa_eq.dcd
+data/ccctaa_eq.pdb
+data/ccctaa_eq.xyz
